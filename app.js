@@ -7,11 +7,14 @@ if (argv.logLevel) {
     logger.setLevel(argv.logLevel);
 }
 
-var client = redis.createClient(); //creates a new client
+var client = redis.createClient();
 
 var SEND_MESSAGE_TIMEOUT = argv.timeout || argv.t || 500;
 
 logger.info("started");
+
+
+
 
 client.on('connect', function onConnect() {
 
@@ -89,6 +92,10 @@ client.on('connect', function onConnect() {
     }
 
 });
+
+
+
+
 
 function getMessage(){
     this.cnt = this.cnt || 0;
