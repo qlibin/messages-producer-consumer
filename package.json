@@ -9,7 +9,8 @@
   "dependencies": {
     "redis": "0.x",
     "minimist": "1.x",
-    "underscore": "1.x"
+    "underscore": "1.x",
+    "logger": "0.x"
   },
   "engines": {
     "node": ">=0.8",
