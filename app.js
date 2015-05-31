@@ -1,46 +1,92 @@
 var redis = require('redis');
+var logger = require('logger').createLogger();
 var argv = require('minimist')(process.argv.slice(2));
-console.dir(argv);
+var Lock = require('./lock').Lock;
 
-var client = redis.createClient(); //creates a new client 
+if (argv.logLevel) {
+    logger.setLevel(argv.logLevel);
+}
 
+var client = redis.createClient(); //creates a new client
 
+var SEND_MESSAGE_TIMEOUT = argv.timeout || argv.t || 500;
 
-client.on('connect', function() {
-    console.log('connected');
+logger.info("started");
 
-    lock.aquire(function(err, lockId){
-        if (err) {
-            console.log("error", err);
-        } else {
-            if (lockId) {
-                console.log('log aquired. do producer stuff');
-                client.publish("messages", getMessage())
-            } else {
-                console.log('log not aqured. consume');
-                client.subscribe("messages");
+client.on('connect', function onConnect() {
+
+    var lock, sendMsgInterval, producer = false, loopCounter = 0;
+
+    logger.info('connected to redis');
+
+    if (argv._.indexOf('getErrors') > -1) {
+
+        logger.info('read and clear all error messages');
+        readAndClearErrorMessages();
+
+    } else {
+
+        lock = new Lock(client, "lock:producer");
+
+        sendMsgInterval = setInterval(produceOrConsume, SEND_MESSAGE_TIMEOUT);
+
+    }
+
+    function produceOrConsume() {
+        loopCounter++;
+        lock.tryAcquire(function successAcquireHandler() {
+            if (!producer) logger.info("I'm a message producer now");
+            producer = true;
+            logger.debug('lock acquired. do producer stuff');
+            sendMessage();
+        }, function errorAcquireHandler(err) {
+            if (loopCounter == 1) logger.info("I will consume messages");
+            producer = false;
+            if (err) {
+                logger.error(err);
             }
-        }
-    });
+            logger.debug('lock not acquired. consume');
+            readMessage();
+        });
+    }
 
-    client.on("message", function (channel, message) {
-        console.log("client1 channel " + channel + ": " + message);
-       
-        if (channel === "messages") {
- 
-            eventHandler(message, function eventHandlerCallback(error, msg) {
-                if (error) {
-                    client.rpush("errorMessages", msg);
+    function sendMessage() {
+        var message = getMessage();
+        logger.debug('write message', message);
+        client.rpush("messages", message);
+    }
+
+    function readMessage() {
+        client.lpop("messages", function onMessageRead(err, message) {
+
+            if (err) {
+                logger.error('error message receive', err);
+            } else {
+                if (message !== null) {
+                    logger.debug("read message", message);
+                    eventHandler(message, function eventHandlerCallback(error, msg) {
+                        if (error) {
+                            logger.error("message processed with error. store it", message);
+                            client.rpush("errorMessages", msg);
+                        }
+                    });
+                } else {
+                    logger.debug("no new messages");
                 }
-            });
+            }
 
-        }
+        });
+    }
 
-        if (message === "poison") {
-            client.unsubscribe();
+    function readAndClearErrorMessages() {
+        var multi = client.multi().lrange('errorMessages', 0, -1, function(err, reply) {
+            logger.info("Error messages");
+            logger.info(reply);
+        }).del("errorMessages", function() {
+            logger.info("Error messages are deleted");
             client.end();
-        }
-    });
+        }).exec();
+    }
 
 });
 
@@ -55,50 +101,10 @@ function eventHandler(msg, callback){
         callback(error, msg);
     }
     // processing takes time...
-    console.log('processing takes time...');
+    logger.debug('processing takes time...');
     setTimeout(onComplete, Math.floor(Math.random()*1000));
 }
 
 
-var lock = (function lock() {
-
-    var generateLockId = function lockIdGenerator() {
-        return new Date().getTime();
-    }, LOCK_TIMEOUT = 30000; //ms
-
-    function aquire(producerId, callback) {
-
-        console.log("trying to aquire lock:producer with pid:" + producerId);
-
-        client.set("lock:producer", "pid:"+producerId, "NX", "PX", LOCK_TIMEOUT, function setLockCallback(err, reply) {
-            if (err) {
-                console.log("error", err);
-                callback(err);
-            } else {
-                console.log("reply", reply);
-                if (reply === "OK" && typeof callback === 'function') {
-                    callback(null, producerId);
-                } else {
-                    callback();
-                }
-            }
-        });
-    }
-
-    return {
-        aquire: function aqure(arg1, agr2) {
-
-            if (arg1 && typeof arg2 == 'function') {
-                aquire(arg1, arg2);
-            } else if (typeof arg1 == 'function') {
-                aquire(generateLockId(), arg1);
-            } else {
-                throw new Error('no arguments provided');
-            }
-
-        }
-    };
-
-})();
 
 
