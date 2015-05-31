@@ -1,0 +1,28 @@
+{
+  "name": "generator",
+  "version": "0.0.1",
+  "description": "test assignment",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "redis": "0.x",
+    "minimist": "1.x",
+    "underscore": "1.x"
+  },
+  "engines": {
+    "node": ">=0.8",
+    "npm": "1.x"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qlibin/generator"
+  },
+  "keywords": [
+    "node",
+    "redis",
+    "producer-consumer"
+  ],
+  "author": "Alexander Libin"
+}
